@@ -1,0 +1,476 @@
+// ===== Configuration =====
+const calibers = [
+  { code: '12', avgWeightG: 365, factor: 1.55, demand: 8 },
+  { code: '14', avgWeightG: 305, factor: 1.40, demand: 18 },
+  { code: '16', avgWeightG: 265, factor: 1.25, demand: 30 },
+  { code: '18', avgWeightG: 235, factor: 1.15, demand: 60 },
+  { code: '20', avgWeightG: 210, factor: 1.05, demand: 80 },
+  { code: '22', avgWeightG: 190, factor: 1.00, demand: 100 },
+  { code: '24', avgWeightG: 175, factor: 0.92, demand: 75 },
+  { code: '26', avgWeightG: 160, factor: 0.85, demand: 45 },
+  { code: '28', avgWeightG: 145, factor: 0.78, demand: 25 },
+  { code: '30', avgWeightG: 135, factor: 0.72, demand: 12 },
+  { code: '32', avgWeightG: 125, factor: 0.68, demand: 6 }
+];
+
+const ORIGINS_META = {
+  Espagne:   { code: 'ES', season: 'Nov-Mai',  volume: '110k T',  months: [1,1,1,1,1,0,0,0,0,0,1,1] },
+  Maroc:     { code: 'MA', season: 'Oct-Avr',  volume: '105k T',  months: [1,1,1,1,0,0,0,0,0,1,1,1] },
+  'Pérou':   { code: 'PE', season: 'Mai-Sept', volume: '550k T',  months: [0,0,0,0,1,1,1,1,1,0,0,0] },
+  'Israël':  { code: 'IL', season: 'Oct-Mar',  volume: '85k T',   months: [1,1,1,0,0,0,0,0,0,1,1,1] },
+  Colombie:  { code: 'CO', season: 'Sept-Avr', volume: '110k T',  months: [1,1,1,1,0,0,0,0,1,1,1,1] },
+  Mexique:   { code: 'MX', season: 'Annuel',   volume: '2.5M T',  months: [1,1,1,1,1,1,1,1,1,1,1,1] }
+};
+
+let prices = null;       // { date, source, avg_wholesale, avg_cif, origins: { Espagne: {wholesale, cif}, ... } }
+let history = [];        // [{ date, wholesale, cif, source, origins: {...} }]
+let originsList = [];    // Liste enrichie utilisée par l'UI
+
+const today = new Date();
+const currentMonth = today.getMonth();
+
+// ===== Chargement des données =====
+async function loadData() {
+  try {
+    // bust cache pour avoir toujours la dernière version
+    const bust = '?t=' + Math.floor(Date.now() / (1000 * 60 * 30)); // change toutes les 30 min
+    const [pricesResp, historyResp] = await Promise.all([
+      fetch('data/prices.json' + bust),
+      fetch('data/history.json' + bust)
+    ]);
+    
+    if (pricesResp.ok) prices = await pricesResp.json();
+    if (historyResp.ok) history = await historyResp.json();
+  } catch (e) {
+    console.warn('Erreur chargement données:', e);
+  }
+  
+  // Si pas de données, utiliser des valeurs par défaut
+  if (!prices) {
+    prices = {
+      date: today.toISOString().slice(0, 10),
+      source: 'données indisponibles',
+      avg_wholesale: 4.70,
+      avg_cif: 2.59,
+      origins: {
+        Espagne: { wholesale: 4.80, cif: 2.85 },
+        Maroc: { wholesale: 4.20, cif: 2.51 },
+        'Pérou': { wholesale: 4.60, cif: 2.73 },
+        'Israël': { wholesale: 4.90, cif: 2.90 },
+        Colombie: { wholesale: 4.70, cif: 2.79 },
+        Mexique: { wholesale: 5.20, cif: 3.06 }
+      }
+    };
+  }
+  
+  // Si l'historique réel est vide, on génère un historique synthétique de 2 ans
+  // basé sur les prix actuels (saisonnalité)
+  if (!history || history.length < 30) {
+    history = generateSyntheticHistory();
+  }
+  
+  // Construire la liste enrichie d'origines
+  originsList = Object.entries(prices.origins).map(([name, data]) => ({
+    name,
+    ...ORIGINS_META[name],
+    wholesale: data.wholesale,
+    cif: data.cif,
+    isActive: ORIGINS_META[name] ? !!ORIGINS_META[name].months[currentMonth] : true
+  }));
+}
+
+function generateSyntheticHistory() {
+  const list = [];
+  const days = 730;
+  const baseW = prices.avg_wholesale || 4.70;
+  for (let i = days; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dayOfYear = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+    const seasonal = Math.sin((dayOfYear - 60) * 2 * Math.PI / 365) * 0.9 + 
+                     Math.sin((dayOfYear - 280) * 2 * Math.PI / 365) * 0.6;
+    const trend = (days - i) / days * 0.4;
+    const yearsAgo = i / 365;
+    let shock = 0;
+    if (yearsAgo > 0.55 && yearsAgo < 0.68) shock = 1.4;
+    if (yearsAgo > 1.55 && yearsAgo < 1.7) shock = 1.1;
+    const noise = (Math.sin(i * 1.7) + Math.cos(i * 0.9)) * 0.15;
+    const wholesale = Math.max(2.5, +(baseW - 0.1 + seasonal + trend + shock + noise).toFixed(2));
+    const cif = +(wholesale * 0.55 + 0.2 + noise * 0.5).toFixed(2);
+    list.push({ date: d.toISOString().slice(0, 10), wholesale, cif });
+  }
+  // Aligner le dernier point sur les prix actuels
+  if (list.length > 0) {
+    list[list.length - 1].wholesale = prices.avg_wholesale;
+    list[list.length - 1].cif = prices.avg_cif;
+  }
+  return list;
+}
+
+// ===== Rendu en-tête =====
+function renderHeader() {
+  const last = history[history.length - 1];
+  const weekAgo = history[history.length - 8] || history[0];
+  const variation = ((last.wholesale - weekAgo.wholesale) / weekAgo.wholesale) * 100;
+  
+  // Prédiction CIF 30j
+  const recent30 = history.slice(-30);
+  const avgCif = recent30.reduce((s, x) => s + x.cif, 0) / recent30.length;
+  const trendCif = recent30.length >= 2 ? (recent30[recent30.length-1].cif - recent30[0].cif) / recent30.length : 0;
+  const pred30 = avgCif + trendCif * 30;
+  
+  // Origine principale
+  const active = originsList.filter(o => o.isActive && o.name !== 'Mexique');
+  const primary = active.length > 0 ? active[0] : originsList.filter(o => o.isActive)[0] || originsList[0];
+  
+  document.getElementById('price-today').textContent = last.wholesale.toFixed(2) + ' €';
+  const vEl = document.getElementById('price-7d');
+  vEl.textContent = (variation >= 0 ? '+' : '') + variation.toFixed(1) + ' %';
+  vEl.style.color = variation >= 0 ? 'var(--red)' : 'var(--green)';
+  document.getElementById('price-pred').textContent = pred30.toFixed(2) + ' €';
+  document.getElementById('season-active').textContent = primary.name;
+  document.getElementById('season-detail').textContent = primary.season + ' · en cours';
+  
+  const dateStr = new Date(prices.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('subtitle').innerHTML = 
+    'Mise à jour : ' + dateStr + ' · Marché Espagne / France' +
+    '<span class="badge-source">' + prices.source + '</span>';
+}
+
+// ===== Tabs =====
+function setupTabs() {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+      
+      const tab = t.dataset.tab;
+      if (tab === 'origins' && !window._originsInit) initOrigins();
+      if (tab === 'caliber' && !window._caliberInit) initCaliber();
+      if (tab === 'predict' && !window._predictInit) initPredict();
+      if (tab === 'margin') loadSavedPrices();
+    });
+  });
+}
+
+// ===== History chart =====
+let historyChart;
+function renderHistory(rangeDays) {
+  const sliced = history.slice(-rangeDays);
+  const step = Math.max(1, Math.floor(sliced.length / 200));
+  const pts = sliced.filter((_, i) => i % step === 0);
+  const labels = pts.map(p => {
+    const d = new Date(p.date);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
+  });
+  
+  if (historyChart) historyChart.destroy();
+  historyChart = new Chart(document.getElementById('historyChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Gros France', data: pts.map(p => p.wholesale), borderColor: '#534AB7', backgroundColor: 'rgba(83,74,183,0.08)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: true },
+        { label: 'Import CIF', data: pts.map(p => p.cif), borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.05)', borderWidth: 2, borderDash: [4,3], pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + ' €/kg' } } },
+      scales: { y: { ticks: { callback: v => v.toFixed(1) + ' €' } }, x: { ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0 } } }
+    }
+  });
+}
+
+// ===== Origins =====
+function initOrigins() {
+  window._originsInit = true;
+  const sorted = [...originsList].sort((a, b) => b.isActive - a.isActive);
+  document.getElementById('origins-grid').innerHTML = sorted.map(o => `
+    <div class="origin-card ${o.isActive ? '' : 'inactive'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-weight:500;font-size:14px;">${o.name}</span>
+        <span class="${o.isActive ? 'badge-active' : 'badge-off'}">${o.isActive ? 'En saison' : 'Hors saison'}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-soft);">Import CIF</div>
+      <div style="font-size:18px;font-weight:600;margin-bottom:6px;">${o.cif.toFixed(2)} €/kg</div>
+      <div style="font-size:11px;color:var(--text-soft);">Gros France</div>
+      <div style="font-size:14px;font-weight:500;margin-bottom:8px;">${o.wholesale.toFixed(2)} €/kg</div>
+      <div style="font-size:11px;color:var(--text-soft);display:flex;justify-content:space-between;">
+        <span>${o.season}</span><span>${o.volume}</span>
+      </div>
+    </div>
+  `).join('');
+  
+  new Chart(document.getElementById('originsChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(o => o.name + (o.isActive ? '' : ' *')),
+      datasets: [
+        { label: 'CIF', data: sorted.map(o => o.cif), backgroundColor: sorted.map(o => o.isActive ? '#1D9E75' : '#9FE1CB'), borderRadius: 4 },
+        { label: 'Gros', data: sorted.map(o => o.wholesale), backgroundColor: sorted.map(o => o.isActive ? '#534AB7' : '#AFA9EC'), borderRadius: 4 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { ticks: { callback: v => v.toFixed(1) + ' €' } } } }
+  });
+}
+
+// ===== Caliber =====
+let caliberChart, demandChart;
+function fillOriginSelector(sel, defaultName) {
+  sel.innerHTML = '';
+  const active = originsList.filter(o => o.isActive && o.name !== 'Mexique');
+  const inactive = originsList.filter(o => !o.isActive || o.name === 'Mexique');
+  if (active.length) {
+    const og = document.createElement('optgroup'); og.label = 'En saison';
+    active.forEach(o => { const opt = document.createElement('option'); opt.value = o.name; opt.textContent = o.name; og.appendChild(opt); });
+    sel.appendChild(og);
+  }
+  if (inactive.length) {
+    const og = document.createElement('optgroup'); og.label = 'Hors saison';
+    inactive.forEach(o => { const opt = document.createElement('option'); opt.value = o.name; opt.textContent = o.name + ' (' + o.season + ')'; og.appendChild(opt); });
+    sel.appendChild(og);
+  }
+  if (defaultName) sel.value = defaultName;
+}
+
+function caliberPrice(originName, type, factor) {
+  const o = originsList.find(x => x.name === originName);
+  if (!o) return 0;
+  if (type === 'wholesale') return o.wholesale * factor;
+  if (type === 'import') return o.cif * factor;
+  if (type === 'carton') return o.wholesale * factor * 4;
+  return 0;
+}
+
+function renderCaliber() {
+  const origin = document.getElementById('caliber-origin').value;
+  const type = document.getElementById('caliber-type').value;
+  const isCarton = type === 'carton';
+  
+  document.getElementById('caliber-grid').innerHTML = calibers.map(c => {
+    const price = caliberPrice(origin, type, c.factor);
+    const featured = ['18','20','22'].includes(c.code);
+    return `<div class="caliber-cell ${featured ? 'featured' : ''}">
+      <div style="font-size:18px;font-weight:600;">${c.code}</div>
+      <div style="font-size:10px;color:var(--text-soft);margin-bottom:6px;">${c.avgWeightG}g</div>
+      <div style="font-size:14px;font-weight:500;">${price.toFixed(2)} €</div>
+      <div style="font-size:10px;color:var(--text-soft);">${isCarton ? 'carton 4kg' : '€/kg'}</div>
+    </div>`;
+  }).join('');
+  
+  if (caliberChart) caliberChart.destroy();
+  caliberChart = new Chart(document.getElementById('caliberChart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: calibers.map(c => c.code), datasets: [{ data: calibers.map(c => +caliberPrice(origin, type, c.factor).toFixed(2)), backgroundColor: calibers.map(c => ['18','20','22'].includes(c.code) ? '#534AB7' : '#AFA9EC'), borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v.toFixed(1) + ' €' } }, x: { title: { display: true, text: 'Calibre (fruits / 4 kg)' } } } }
+  });
+  
+  if (!demandChart) {
+    demandChart = new Chart(document.getElementById('demandChart').getContext('2d'), {
+      type: 'bar',
+      data: { labels: calibers.map(c => c.code), datasets: [{ data: calibers.map(c => c.demand), backgroundColor: calibers.map(c => ['18','20','22'].includes(c.code) ? '#1D9E75' : '#9FE1CB'), borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { title: { display: true, text: 'Indice (base 100 = cal. 22)' } }, x: { title: { display: true, text: 'Calibre' } } } }
+    });
+  }
+}
+
+function initCaliber() {
+  window._caliberInit = true;
+  const primary = originsList.find(o => o.isActive && o.name !== 'Mexique') || originsList[0];
+  fillOriginSelector(document.getElementById('caliber-origin'), primary.name);
+  renderCaliber();
+  document.getElementById('caliber-origin').addEventListener('change', renderCaliber);
+  document.getElementById('caliber-type').addEventListener('change', renderCaliber);
+}
+
+// ===== Prediction (CIF) =====
+let predictChart;
+function buildPrediction() {
+  const originName = document.getElementById('predict-origin').value;
+  const caliberCode = document.getElementById('predict-caliber').value;
+  const climate = document.getElementById('climate-input').value;
+  const demand = document.getElementById('demand-input').value;
+  const importLvl = document.getElementById('import-input').value;
+  
+  const origin = originsList.find(o => o.name === originName) || originsList[0];
+  const cal = calibers.find(c => c.code === caliberCode) || calibers[5];
+  
+  const avgCIF = originsList.reduce((s, o) => s + o.cif, 0) / originsList.length;
+  const originFactor = origin.cif / avgCIF;
+  const caliberFactor = cal.factor;
+  const seasonPenalty = origin.isActive ? 1.0 : 1.08;
+  
+  let climateFactor = 1.0;
+  if (climate === 'dry') climateFactor = 1.15;
+  if (climate === 'wet') climateFactor = 0.92;
+  let demandFactor = 1.0;
+  if (demand === 'high') demandFactor = 1.08;
+  if (demand === 'low') demandFactor = 0.93;
+  let importFactor = 1.0;
+  if (importLvl === 'high') importFactor = 0.85;
+  if (importLvl === 'low') importFactor = 1.12;
+  
+  const totalFactor = originFactor * caliberFactor * seasonPenalty * climateFactor * demandFactor * importFactor;
+  const recent = history.slice(-60);
+  const last = recent[recent.length - 1];
+  const trendD = recent.length >= 2 ? (recent[recent.length-1].cif - recent[0].cif) / recent.length : 0;
+  
+  const baseAdjust = originFactor * caliberFactor;
+  const adjustedRecent = recent.map(r => ({ date: new Date(r.date), value: +(r.cif * baseAdjust).toFixed(2) }));
+  
+  const future = [], lower = [], upper = [];
+  for (let i = 1; i <= 90; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const doy = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+    const seasonal = Math.sin((doy - 60) * 2 * Math.PI / 365) * 0.4;
+    const baseValue = last.cif + trendD * i * 0.3 + seasonal * 0.15;
+    const value = baseValue * totalFactor;
+    const ci = i / 90 * 0.5 + 0.15;
+    future.push({ date: d, value: +value.toFixed(2) });
+    lower.push(+(value - ci).toFixed(2));
+    upper.push(+(value + ci).toFixed(2));
+  }
+  return { recent: adjustedRecent, future, lower, upper, origin, cal };
+}
+
+function renderPrediction() {
+  const { recent, future, lower, upper, origin, cal } = buildPrediction();
+  const allLabels = [...recent.map(p => p.date.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' })), ...future.map(p => p.date.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' }))];
+  const histData = recent.map(p => p.value).concat(Array(90).fill(null));
+  const futData = Array(60).fill(null).concat([recent[recent.length-1].value]).concat(future.slice(1).map(p => p.value));
+  const upperData = Array(60).fill(null).concat([recent[recent.length-1].value]).concat(upper.slice(1));
+  const lowerData = Array(60).fill(null).concat([recent[recent.length-1].value]).concat(lower.slice(1));
+  
+  if (predictChart) predictChart.destroy();
+  predictChart = new Chart(document.getElementById('predictChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: allLabels,
+      datasets: [
+        { label: 'IC haut', data: upperData, borderColor: 'transparent', backgroundColor: 'rgba(240,153,123,0.25)', pointRadius: 0, fill: '+1', tension: 0.3 },
+        { label: 'IC bas', data: lowerData, borderColor: 'transparent', backgroundColor: 'rgba(240,153,123,0.25)', pointRadius: 0, fill: false, tension: 0.3 },
+        { label: 'Historique CIF', data: histData, borderColor: '#1D9E75', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false },
+        { label: 'Prédiction CIF', data: futData, borderColor: '#D85A30', borderWidth: 2, borderDash: [5,4], pointRadius: 0, tension: 0.3, fill: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { filter: i => i.dataset.label === 'Historique CIF' || i.dataset.label === 'Prédiction CIF', callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y || 0).toFixed(2) + ' €/kg' } } },
+      scales: { y: { ticks: { callback: v => v.toFixed(1) + ' €' } }, x: { ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0 } } }
+    }
+  });
+  
+  const p30 = future[29].value, p60 = future[59].value, p90 = future[89].value;
+  document.getElementById('predict-summary').innerHTML = `
+    <div class="stat"><div class="stat-label">Origine</div><div class="stat-value" style="font-size:16px">${origin.name}</div><div class="stat-detail">${origin.isActive ? 'En saison' : 'Hors saison'} · cal. ${cal.code}</div></div>
+    <div class="stat"><div class="stat-label">CIF +30 jours</div><div class="stat-value">${p30.toFixed(2)} €</div><div class="stat-detail">€/kg estimé</div></div>
+    <div class="stat"><div class="stat-label">CIF +60 jours</div><div class="stat-value">${p60.toFixed(2)} €</div><div class="stat-detail">€/kg estimé</div></div>
+    <div class="stat"><div class="stat-label">CIF +90 jours</div><div class="stat-value">${p90.toFixed(2)} €</div><div class="stat-detail">€/kg estimé</div></div>
+  `;
+}
+
+function initPredict() {
+  window._predictInit = true;
+  const primary = originsList.find(o => o.isActive && o.name !== 'Mexique') || originsList[0];
+  fillOriginSelector(document.getElementById('predict-origin'), primary.name);
+  renderPrediction();
+  ['predict-origin','predict-caliber','climate-input','demand-input','import-input'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderPrediction);
+  });
+}
+
+// ===== Margin =====
+function getCaliberFactor(code) { const c = calibers.find(x => x.code === code); return c ? c.factor : 1.0; }
+
+function computeMargin() {
+  const buy = parseFloat(document.getElementById('my-buy-price').value);
+  const qty = parseFloat(document.getElementById('my-quantity').value);
+  const type = document.getElementById('my-type').value;
+  const cal = document.getElementById('my-caliber').value;
+  if (!buy || buy <= 0) { document.getElementById('margin-result').style.display = 'none'; return; }
+  const last = history[history.length - 1];
+  const factor = getCaliberFactor(cal);
+  const baseMarket = type === 'import' ? last.cif : last.wholesale;
+  const market = baseMarket * factor;
+  const spread = market - buy;
+  const totalMargin = spread * (qty || 0);
+  
+  document.getElementById('m-market').textContent = market.toFixed(2) + ' €';
+  document.getElementById('m-market-detail').textContent = `€/kg · cal. ${cal}`;
+  const sEl = document.getElementById('m-spread');
+  sEl.textContent = (spread >= 0 ? '+' : '') + spread.toFixed(2) + ' €';
+  sEl.style.color = spread >= 0 ? 'var(--green)' : 'var(--red)';
+  const mEl = document.getElementById('m-margin');
+  mEl.textContent = (totalMargin >= 0 ? '+' : '') + totalMargin.toFixed(0) + ' €';
+  mEl.style.color = totalMargin >= 0 ? 'var(--green)' : 'var(--red)';
+  let reco;
+  const pct = (spread / market) * 100;
+  if (pct > 15) reco = "Très bon prix d'achat";
+  else if (pct > 5) reco = 'Bon achat, marge correcte';
+  else if (pct > -5) reco = 'Aligné au marché';
+  else if (pct > -15) reco = 'Prix élevé, négocier';
+  else reco = 'Trop cher vs marché';
+  document.getElementById('m-reco').textContent = reco;
+  document.getElementById('margin-result').style.display = 'block';
+}
+
+function loadSavedPrices() {
+  try {
+    const arr = JSON.parse(localStorage.getItem('avoMyPrices') || '[]');
+    renderSavedPrices(arr);
+  } catch { renderSavedPrices([]); }
+}
+
+function renderSavedPrices(arr) {
+  const list = document.getElementById('saved-list');
+  if (!arr.length) { list.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;">Aucun prix enregistré</div>'; return; }
+  list.innerHTML = arr.slice(-5).reverse().map(p => `
+    <div class="saved-row">
+      <span style="color:var(--text-soft)">${p.date}</span>
+      <span style="font-weight:500">${p.price.toFixed(2)} €/kg</span>
+      <span style="color:var(--text-soft);font-size:12px">cal. ${p.caliber || '–'}</span>
+      <span style="color:var(--text-soft);font-size:12px">${p.type === 'import' ? 'CIF' : 'Gros'}</span>
+      <span style="color:var(--text-soft)">${p.qty} kg</span>
+    </div>
+  `).join('');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadData();
+  renderHeader();
+  setupTabs();
+  renderHistory(730);
+  document.querySelectorAll('.range-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      renderHistory(parseInt(b.dataset.range));
+    });
+  });
+  ['my-buy-price','my-quantity','my-type','my-caliber'].forEach(id => {
+    document.getElementById(id).addEventListener('input', computeMargin);
+    document.getElementById(id).addEventListener('change', computeMargin);
+  });
+  document.getElementById('save-price-btn').addEventListener('click', () => {
+    const buy = parseFloat(document.getElementById('my-buy-price').value);
+    const qty = parseFloat(document.getElementById('my-quantity').value) || 0;
+    const type = document.getElementById('my-type').value;
+    const cal = document.getElementById('my-caliber').value;
+    if (!buy || buy <= 0) return;
+    const status = document.getElementById('save-status');
+    try {
+      const arr = JSON.parse(localStorage.getItem('avoMyPrices') || '[]');
+      arr.push({ date: new Date().toLocaleDateString('fr-FR'), price: buy, qty, type, caliber: cal, ts: Date.now() });
+      localStorage.setItem('avoMyPrices', JSON.stringify(arr));
+      status.textContent = '✓ Enregistré';
+      setTimeout(() => status.textContent = '', 2000);
+      renderSavedPrices(arr);
+    } catch { status.textContent = 'Erreur'; }
+  });
+});

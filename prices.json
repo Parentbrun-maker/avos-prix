@@ -1,0 +1,25 @@
+{
+  "name": "Avocat Hass · Prix Europe",
+  "short_name": "Avocat Hass",
+  "description": "Suivi des prix de l'avocat Hass en Europe avec historique 2 ans, prédiction et calcul de marge",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fafaf7",
+  "theme_color": "#1d6e56",
+  "orientation": "portrait-primary",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

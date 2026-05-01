@@ -1,0 +1,14 @@
+{
+  "date": "2026-05-01",
+  "source": "valeurs-initiales",
+  "avg_wholesale": 4.70,
+  "avg_cif": 2.59,
+  "origins": {
+    "Espagne": { "wholesale": 4.80, "cif": 2.85 },
+    "Maroc": { "wholesale": 4.20, "cif": 2.51 },
+    "Pérou": { "wholesale": 4.60, "cif": 2.73 },
+    "Israël": { "wholesale": 4.90, "cif": 2.90 },
+    "Colombie": { "wholesale": 4.70, "cif": 2.79 },
+    "Mexique": { "wholesale": 5.20, "cif": 3.06 }
+  }
+}

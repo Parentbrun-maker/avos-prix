@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1d6e56">
+<title>Avocat Hass · Prix Europe</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #fafaf7;
+    --bg-card: #ffffff;
+    --bg-soft: #f0efe8;
+    --border: #e3e1d6;
+    --text: #1f1f1d;
+    --text-soft: #6c6b62;
+    --text-tertiary: #9e9c92;
+    --primary: #1d6e56;
+    --primary-soft: #d6ebe2;
+    --accent: #534ab7;
+    --orange: #d85a30;
+    --red: #c53030;
+    --green: #1d9e75;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181a;
+      --bg-card: #232325;
+      --bg-soft: #2a2a2c;
+      --border: #3a3a3c;
+      --text: #f5f5f3;
+      --text-soft: #a8a7a0;
+      --text-tertiary: #6c6b62;
+      --primary: #2faa84;
+      --primary-soft: #1f3d33;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .container {
+    max-width: 1100px; margin: 0 auto;
+    padding: 16px;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+    padding-top: max(env(safe-area-inset-top, 16px), 16px);
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { font-size: 13px; color: var(--text-soft); margin: 0 0 20px; }
+  .badge-source {
+    display: inline-block; font-size: 11px; padding: 2px 8px;
+    border-radius: 10px; background: var(--primary-soft); color: var(--primary);
+    margin-left: 8px;
+  }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .stat { background: var(--bg-soft); border-radius: var(--radius); padding: 12px 14px; }
+  .stat-label { font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .stat-detail { font-size: 11px; color: var(--text-soft); }
+  .tabs {
+    display: flex; gap: 2px; border-bottom: 1px solid var(--border);
+    margin-bottom: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  .tab {
+    background: transparent; border: none; padding: 10px 14px;
+    font-size: 14px; cursor: pointer; color: var(--text-soft);
+    border-bottom: 2px solid transparent; white-space: nowrap;
+    font-family: inherit;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .range-btns { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .range-btn {
+    background: transparent; border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px 12px; font-size: 12px;
+    cursor: pointer; color: var(--text-soft); font-family: inherit;
+  }
+  .range-btn.active { background: var(--bg-soft); color: var(--text); font-weight: 500; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; font-size: 12px; color: var(--text-soft); }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+  .chart-wrap { position: relative; width: 100%; height: 320px; margin-bottom: 20px; }
+  .chart-wrap.medium { height: 280px; }
+  .chart-wrap.small { height: 200px; }
+  
+  .origin-grid, .caliber-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .caliber-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
+  .origin-card, .caliber-cell {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px;
+  }
+  .origin-card.inactive { opacity: 0.45; }
+  .caliber-cell { padding: 10px 8px; text-align: center; }
+  .caliber-cell.featured { border: 2px solid var(--accent); padding: 9px 7px; }
+  .badge-active { background: var(--primary-soft); color: var(--primary); font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 500; }
+  .badge-off { background: var(--bg-soft); color: var(--text-tertiary); font-size: 10px; padding: 2px 6px; border-radius: 10px; }
+  
+  .controls { background: var(--bg-soft); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; }
+  .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  label { font-size: 12px; color: var(--text-soft); display: block; margin-bottom: 6px; }
+  select, input[type="number"] {
+    width: 100%; font-family: inherit; font-size: 14px;
+    padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg-card); color: var(--text);
+  }
+  button.primary {
+    background: var(--primary); color: white; border: none;
+    border-radius: var(--radius); padding: 8px 16px; font-size: 13px;
+    cursor: pointer; font-family: inherit;
+  }
+  .saved-row {
+    display: flex; justify-content: space-between; padding: 8px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .install-banner {
+    display: none; background: var(--primary-soft); color: var(--primary);
+    border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px;
+    font-size: 13px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="install-banner" id="install-banner">📱 Ajouter cette app à l'écran d'accueil</div>
+  
+  <h1>Avocat Hass · Prix Europe</h1>
+  <p class="subtitle" id="subtitle">Chargement des prix...<span class="badge-source" id="source-badge" style="display:none"></span></p>
+  
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Prix moyen aujourd'hui</div>
+      <div class="stat-value" id="price-today">–</div>
+      <div class="stat-detail">€/kg gros France</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Variation 7j</div>
+      <div class="stat-value" id="price-7d">–</div>
+      <div class="stat-detail">vs semaine -1</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Prédiction CIF 30j</div>
+      <div class="stat-value" id="price-pred">–</div>
+      <div class="stat-detail">€/kg import direct</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Origine principale</div>
+      <div class="stat-value" id="season-active">–</div>
+      <div class="stat-detail" id="season-detail">saison en cours</div>
+    </div>
+  </div>
+  
+  <div class="tabs">
+    <button class="tab active" data-tab="history">Historique 2 ans</button>
+    <button class="tab" data-tab="origins">Origines</button>
+    <button class="tab" data-tab="caliber">Calibres</button>
+    <button class="tab" data-tab="predict">Prédiction</button>
+    <button class="tab" data-tab="margin">Ma marge</button>
+  </div>
+  
+  <div class="panel active" id="tab-history">
+    <div class="range-btns">
+      <button class="range-btn active" data-range="730">2 ans</button>
+      <button class="range-btn" data-range="365">1 an</button>
+      <button class="range-btn" data-range="180">6 mois</button>
+      <button class="range-btn" data-range="90">3 mois</button>
+      <button class="range-btn" data-range="30">30 jours</button>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#534AB7"></span>Prix gros France (€/kg)</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>Prix import direct CIF</span>
+    </div>
+    <div class="chart-wrap"><canvas id="historyChart"></canvas></div>
+  </div>
+  
+  <div class="panel" id="tab-origins">
+    <p class="subtitle">Origines actives ce mois · les origines hors saison sont grisées</p>
+    <div class="origin-grid" id="origins-grid"></div>
+    <div class="chart-wrap medium"><canvas id="originsChart"></canvas></div>
+  </div>
+  
+  <div class="panel" id="tab-caliber">
+    <p class="subtitle">Prix selon le calibre (fruits par carton 4 kg). Petit numéro = gros fruit.</p>
+    <div class="controls">
+      <div class="controls-grid">
+        <div>
+          <label>Origine</label>
+          <select id="caliber-origin"></select>
+        </div>
+        <div>
+          <label>Type</label>
+          <select id="caliber-type">
+            <option value="wholesale" selected>Gros France (€/kg)</option>
+            <option value="import">Import CIF (€/kg)</option>
+            <option value="carton">Carton 4 kg (€)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="caliber-grid" id="caliber-grid"></div>
+    <div style="font-size: 13px; font-weight: 500; margin: 16px 0 8px;">Comparaison par calibre</div>
+    <div class="chart-wrap medium"><canvas id="caliberChart"></canvas></div>
+    <div style="font-size: 13px; font-weight: 500; margin: 16px 0 8px;">Demande relative GMS Europe</div>
+    <div class="chart-wrap small"><canvas id="demandChart"></canvas></div>
+  </div>
+  
+  <div class="panel" id="tab-predict">
+    <p class="subtitle">Prédiction CIF sur 90 jours selon origine, calibre, climat, demande, import Europe</p>
+    <div class="controls">
+      <div class="controls-grid">
+        <div><label>Origine</label><select id="predict-origin"></select></div>
+        <div><label>Calibre</label><select id="predict-caliber">
+          <option value="14">14 (très gros)</option>
+          <option value="16">16 (gros)</option>
+          <option value="18">18 (gros standard)</option>
+          <option value="20">20 (moyen)</option>
+          <option value="22" selected>22 (référence)</option>
+          <option value="24">24 (petit-moyen)</option>
+          <option value="26">26 (petit)</option>
+          <option value="28">28 (petit)</option>
+          <option value="30">30 (très petit)</option>
+        </select></div>
+        <div><label>Climat origine</label><select id="climate-input">
+          <option value="dry">Sec (-15% offre)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="wet">Pluvieux (+10% offre)</option>
+        </select></div>
+        <div><label>Demande Europe</label><select id="demand-input">
+          <option value="low">Faible</option>
+          <option value="normal" selected>Normale</option>
+          <option value="high">Forte (+8%)</option>
+        </select></div>
+        <div><label>Volume import Europe</label><select id="import-input">
+          <option value="low">Faible (-12%)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="high">Élevé (+15% offre)</option>
+        </select></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot" style="background:#1D9E75"></span>Historique CIF</span>
+      <span class="legend-item"><span style="width:14px;height:0;border-top:2px dashed #D85A30"></span>Prédiction CIF</span>
+      <span class="legend-item"><span class="legend-dot" style="background:#F0997B;opacity:0.4"></span>Intervalle confiance</span>
+    </div>
+    <div class="chart-wrap"><canvas id="predictChart"></canvas></div>
+    <div class="stats" id="predict-summary"></div>
+  </div>
+  
+  <div class="panel" id="tab-margin">
+    <p class="subtitle">Calculez votre marge avec votre propre prix d'achat</p>
+    <div class="controls" style="background: var(--bg-card); border: 1px solid var(--border);">
+      <div class="controls-grid" style="margin-bottom: 12px;">
+        <div><label>Mon prix d'achat (€/kg)</label><input type="number" id="my-buy-price" step="0.1" min="0" placeholder="ex: 2.80"></div>
+        <div><label>Quantité (kg)</label><input type="number" id="my-quantity" step="100" min="0" value="1000"></div>
+        <div><label>Calibre</label><select id="my-caliber">
+          <option value="14">14 (très gros)</option>
+          <option value="16">16 (gros)</option>
+          <option value="18" selected>18 (gros standard)</option>
+          <option value="20">20 (moyen)</option>
+          <option value="22">22 (moyen)</option>
+          <option value="24">24 (petit-moyen)</option>
+          <option value="26">26 (petit)</option>
+          <option value="28">28 (petit)</option>
+          <option value="30">30 (très petit)</option>
+        </select></div>
+        <div><label>Type</label><select id="my-type">
+          <option value="import">Import direct CIF</option>
+          <option value="wholesale" selected>Achat gros France</option>
+        </select></div>
+      </div>
+      <button class="primary" id="save-price-btn">Enregistrer mon prix</button>
+      <span style="font-size: 12px; color: var(--green); margin-left: 10px;" id="save-status"></span>
+    </div>
+    <div id="margin-result" style="display:none">
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Prix marché ref.</div><div class="stat-value" id="m-market">–</div><div class="stat-detail" id="m-market-detail">€/kg</div></div>
+        <div class="stat"><div class="stat-label">Écart au marché</div><div class="stat-value" id="m-spread">–</div><div class="stat-detail">€/kg</div></div>
+        <div class="stat"><div class="stat-label">Marge potentielle</div><div class="stat-value" id="m-margin">–</div><div class="stat-detail">sur quantité totale</div></div>
+        <div class="stat"><div class="stat-label">Recommandation</div><div class="stat-value" id="m-reco" style="font-size:16px;line-height:1.3">–</div></div>
+      </div>
+      <div style="font-size: 13px; font-weight: 500; margin: 8px 0;">Mes derniers prix enregistrés</div>
+      <div id="saved-list"></div>
+    </div>
+  </div>
+  
+  <p style="font-size: 11px; color: var(--text-tertiary); text-align: center; margin-top: 24px;">
+    Données : FranceAgriMer-RNM via data.gouv.fr · Mise à jour quotidienne automatique
+  </p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+  
+  // PWA install prompt
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('install-banner').style.display = 'block';
+  });
+  document.getElementById('install-banner').addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt = null;
+    document.getElementById('install-banner').style.display = 'none';
+  });
+</script>
+</body>
+</html>
